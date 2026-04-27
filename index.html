@@ -1,0 +1,135 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+    <title>Draw in Coffee</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/react/18.3.1/umd/react.production.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.3.1/umd/react-dom.production.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.24.7/babel.min.js"></script>
+    <style>
+        body { margin: 0; padding: 0; background: #3a2418; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; }
+        #root { width: 100vw; min-height: 100vh; }
+    </style>
+</head>
+<body>
+<div id="root"></div>
+<script type="text/babel" data-presets="react">
+const { useState, useEffect, useRef, useCallback } = React;
+
+/* ═══ DATA ═══ */
+const CUPS = [
+    {id: "tea", name: "下午茶杯", desc: "英式 · 优雅"},
+    {id: "mug", name: "陶瓷马克杯", desc: "温暖 · 日常"},
+    {id: "esp", name: "浓缩小杯", desc: "精致 · 复古"},
+];
+
+const SYRUPS = ["香草糖浆", "焦糖酱", "榛果糖浆", "可可酱"];
+
+const ORDERS = [
+    {name: "拿铁", base: "milk", syrups: [], shots: 2, price: 32, needsArt: true},
+    {name: "美式", base: "water", syrups: [], shots: 2, price: 28, needsArt: false},
+    {name: "香草拿铁", base: "milk", syrups: ["香草糖浆"], shots: 2, price: 36, needsArt: true},
+    {name: "焦糖玛奇朵", base: "milk", syrups: ["焦糖酱"], shots: 2, price: 38, needsArt: true},
+    {name: "摩卡", base: "milk", syrups: ["可可酱"], shots: 2, price: 36, needsArt: true},
+];
+
+const REV = {
+    perfect: ["满分！！每一步都完美 这杯我要拍照", "大师级出品 没有任何可以挑的", "我愿意为这杯咖啡排一小时队", "以后指定找你做 别人我不信任", "这杯有灵魂 我喝到了用心🥹"],
+    great: ["挺好的 有在认真做", "不错 这杯我满意 下次再来", "可以的 比外面很多店都强", "给你好评👍", "用心了 我喝得出来"],
+    ok: ["还行 凑合能喝", "一般般吧 不功不过", "hmmm 中规中矩", "及格线上下", "也不难喝 就是没什么惊喜"],
+    bad_extract_under: ["这也太淡了……像刷锅水", "浓缩萃取不够吧？味道寡淡", "怎么跟喝水一样 钱白花了", "这杯咖啡没有咖啡味"],
+    bad_extract_over: ["苦得我脸都皱了", "过萃了吧？又苦又涩", "这杯咖啡可以用来提神一整年"],
+    wrong_base: ["我要的是拿铁你给我美式？？", "不是……我点的不是这个吧", "你搞反了吧 我要的是加奶的"],
+    wrong_syrup: ["我要的是香草不是焦糖啊", "加错小料了！你看看单子好吗", "这味道不对 你加了什么乱七八糟的"],
+    no_art: ["说好的拉花呢？？直接端上来的？", "拉花呢朋友？？我点的是拿铁不是白开水"],
+    messy_art: ["这是拉花还是倒牛奶啊", "涂满了……你以为在刷墙？", "全白了 这叫拉花？这叫倒奶"],
+    ugly_art: ["这拉花……有点抽象", "你确定这是拉花不是事故？", "算了 盖上盖子就看不见了"],
+    multi_fail: ["这杯从头错到尾 我要退款", "你真的是咖啡师吗 认真的？", "钱退给我吧 这杯我不要了"]
+};
+
+/* ═══ STYLES ═══ */
+const S = `
+    .R { min-height: 100vh; color: #F5E6C8; background: #3a2418; display: flex; flex-direction: column; align-items: center; padding: 20px; }
+    .fade { animation: fadeIn 0.5s ease; }
+    @keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
+    .btn { padding: 12px 24px; border-radius: 20px; border: 1px solid #F5E6C8; background: transparent; color: #F5E6C8; cursor: pointer; margin: 10px; }
+    .btn-primary { background: #F5E6C8; color: #3a2418; font-weight: bold; }
+    .cup-grid { display: flex; gap: 15px; margin-top: 30px; flex-wrap: wrap; justify-content: center; }
+    .cup-item { background: rgba(255,255,255,0.05); padding: 20px; border-radius: 15px; cursor: pointer; text-align: center; width: 120px; border: 1px solid transparent; }
+    .cup-item:hover { border-color: #F5E6C8; }
+    .order-card { background: rgba(0,0,0,0.3); padding: 15px; border-radius: 10px; margin-bottom: 20px; width: 100%; max-width: 300px; border: 1px dashed #F5E6C8; }
+    .canvas-container { position: relative; width: 280px; height: 280px; background: #2E180C; border-radius: 50%; border: 8px solid #F5E6C8; overflow: hidden; cursor: crosshair; }
+    .money { position: fixed; top: 20px; right: 20px; background: rgba(0,0,0,0.5); padding: 5px 15px; border-radius: 20px; }
+`;
+
+function App() {
+    const [phase, setPhase] = useState("cups");
+    const [money, setMoney] = useState(100);
+    const [order, setOrder] = useState(null);
+    const [review, setReview] = useState(null);
+
+    const startNewOrder = () => {
+        const newOrder = ORDERS[Math.floor(Math.random() * ORDERS.length)];
+        setOrder(newOrder);
+        setPhase("brewing");
+    };
+
+    const finishCoffee = () => {
+        const pool = REV.perfect;
+        const randomComment = pool[Math.floor(Math.random() * pool.length)];
+        setReview(randomComment);
+        setMoney(prev => prev + order.price);
+        setPhase("result");
+    };
+
+    return (
+        <div className="R">
+            <style>{S}</style>
+            <div className="money">💰 ¥{money}</div>
+
+            {phase === "cups" && (
+                <div className="fade">
+                    <h2 style={{textAlign: 'center'}}>选一个杯子开始营业</h2>
+                    <div className="cup-grid">
+                        {CUPS.map(c => (
+                            <div key={c.id} className="cup-item" onClick={startNewOrder}>
+                                <div style={{fontSize: '30px', marginBottom: '10px'}}>{c.id === 'tea' ? '☕' : '🥛'}</div>
+                                <div>{c.name}</div>
+                            </div>
+                        ))}
+                    </div>
+                </div>
+            )}
+
+            {phase === "brewing" && (
+                <div className="fade" style={{textAlign: 'center'}}>
+                    <div className="order-card">
+                        <div style={{fontSize: '12px', opacity: 0.6}}>当前订单</div>
+                        <div style={{fontSize: '20px', fontWeight: 'bold'}}>{order.name}</div>
+                    </div>
+                    <h3>正在精心萃取...</h3>
+                    <div className="canvas-container" style={{margin: '20px auto'}}>
+                        {/* 简化的拉花模拟区域 */}
+                    </div>
+                    <button className="btn btn-primary" onClick={finishCoffee}>端给客人</button>
+                </div>
+            )}
+
+            {phase === "result" && (
+                <div className="fade" style={{textAlign: 'center', maxWidth: '300px'}}>
+                    <div style={{fontSize: '50px'}}>✨</div>
+                    <h3 style={{margin: '20px 0'}}>"{review}"</h3>
+                    <p>你获得了 ¥{order.price}</p>
+                    <button className="btn" onClick={() => setPhase("cups")}>接待下一位</button>
+                </div>
+            )}
+        </div>
+    );
+}
+
+const root = ReactDOM.createRoot(document.getElementById("root"));
+root.render(<App />);
+</script>
+</body>
+</html>
